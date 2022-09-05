@@ -1,0 +1,74 @@
+from curses import def_shell_mode
+from logging.config import dictConfig
+import glob, os
+import numpy as np
+import matplotlib.pyplot as plt
+from skimage import io 
+from skimage.filters import thresholding
+from skimage.filters.rank import entropy
+from skimage.morphology import disk
+from skimage.color import rgb2gray
+from scipy import ndimage as ndi
+
+#lists to store time and area
+fname_list = []
+area_list = []
+
+#location of files
+PATH = "test/ws/*.tif"
+
+#read files
+for file in glob.glob(PATH):
+    img = io.imread(file)
+
+    #get the folder name from the last split in the path
+    folder = os.path.split(os.path.split(PATH)[0])[1]
+    print('folder name is:', folder)
+
+    # get the file names
+    fname = os.path.basename(file)
+    # remove extention and text from file name to get time
+    fname = fname.split(' s.tif')[0]
+    # add file to list as a float with the time
+    fname_list.append(float(fname))
+    print('current file name is:',fname)
+
+    gray = ndi.gaussian_filter(rgb2gray(img), sigma=3)
+    # seperate two regions of textures using entropy
+    DS = 50 #disk size
+    img_entropy = entropy(gray,disk(DS))
+    # threshold the entropy image using Otsu to find threshold value
+    img_thresh  = thresholding.threshold_otsu(img_entropy)
+    # create binary image with all pixels below the threshold
+    img_binary  = img_entropy <= img_thresh
+    area = np.sum(img_binary == 1)
+    print('area is:',area)
+    area_list.append(area)
+    # plt.imshow(img_binary)
+    # plt.show()
+
+# convert to dictionary
+area_dict = {fname_list[i]:area_list[i] for i in range(len(fname_list))}
+# sorted by time, return a list of tuples
+time_sort = sorted(area_dict.items(), key=lambda item: item[0])
+# unpack the list of pairs into two tuples
+x,y = zip(*time_sort)
+# convert the two tuples to array for plotting best fit line
+x = np.asarray(x)
+y = np.asarray(y)
+# find line of best fit
+a,b = np.polyfit(x,y,1)
+
+# plot results
+plt.plot(x,y,'o', color='b')
+#add line of best fit to plot
+plt.plot(x, a*x+b, color='r' )
+# format axis to appear in plain number
+plt.ticklabel_format(style='plain')
+#add fitted regression equation to plot in annotate position
+plt.annotate('y = ' + '{:.2f}'.format(b) + ' + {:.2f}'.format(a) + 'x',
+    xy=(0.5, 0.75), xycoords='axes fraction')
+plt.xlabel('Time',fontsize=12)
+plt.ylabel('Area', ha='left', y=1, rotation=0,fontsize=12)
+plt.title(folder+' scratch healing rate',fontsize=12)
+plt.show()
